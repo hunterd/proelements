@@ -28,16 +28,43 @@
         };
     }
     
-    // Global import.meta polyfill
-    if (typeof globalThis !== 'undefined' && typeof globalThis.import === 'undefined') {
-        Object.defineProperty(globalThis, 'import', {
-            value: {
-                meta: window.importMeta
-            },
-            writable: false,
-            configurable: false
-        });
+    // Global import.meta polyfill - multiple approaches
+    if (typeof globalThis !== 'undefined') {
+        // Approach 1: Direct assignment
+        if (typeof globalThis.import === 'undefined') {
+            try {
+                Object.defineProperty(globalThis, 'import', {
+                    value: {
+                        meta: window.importMeta
+                    },
+                    writable: false,
+                    configurable: true
+                });
+            } catch (e) {
+                // Fallback if property cannot be defined
+                globalThis.import = { meta: window.importMeta };
+            }
+        } else if (globalThis.import && !globalThis.import.meta) {
+            globalThis.import.meta = window.importMeta;
+        }
+        
+        // Approach 2: Window-level polyfill
+        if (typeof window.import === 'undefined') {
+            window.import = { meta: window.importMeta };
+        } else if (!window.import.meta) {
+            window.import.meta = window.importMeta;
+        }
     }
+    
+    // Approach 3: Script-level polyfill by intercepting script evaluation
+    const originalEval = window.eval;
+    window.eval = function(code) {
+        if (typeof code === 'string' && code.includes('import.meta')) {
+            // Replace import.meta with window.importMeta
+            code = code.replace(/import\.meta/g, 'window.importMeta');
+        }
+        return originalEval.call(this, code);
+    };
 
     // Fix DataCloneError: URL object could not be cloned
     const originalPostMessage = window.postMessage;
@@ -63,6 +90,29 @@
             }
         }
     };
+
+    // Fix for "Promised response from onMessage listener went out of scope"
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+        const originalAddListener = chrome.runtime.onMessage.addListener;
+        chrome.runtime.onMessage.addListener = function(callback) {
+            const wrappedCallback = function(message, sender, sendResponse) {
+                try {
+                    const result = callback(message, sender, sendResponse);
+                    if (result instanceof Promise) {
+                        result.catch(error => {
+                            console.warn('ProElements: Caught promise error in onMessage listener:', error);
+                        });
+                        return true; // Keep the message channel open for async response
+                    }
+                    return result;
+                } catch (error) {
+                    console.warn('ProElements: Caught error in onMessage listener:', error);
+                    return false;
+                }
+            };
+            return originalAddListener.call(this, wrappedCallback);
+        };
+    }
 
     // Override Worker constructor to handle DataCloneError
     if (typeof Worker !== 'undefined') {
@@ -199,20 +249,57 @@
         initializeFixes();
     }
 
-    // Also run when Elementor is loaded - with safety check
+    // Also run when Elementor is loaded - with enhanced safety check
     function addElementorHooks() {
         if (typeof elementorFrontend !== 'undefined' && 
             elementorFrontend.hooks && 
             typeof elementorFrontend.hooks.addAction === 'function') {
-            elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
+            try {
+                elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
+                console.log('ProElements: Successfully added Elementor hooks');
+            } catch (error) {
+                console.warn('ProElements: Failed to add Elementor hooks:', error);
+            }
         } else {
-            // Retry after a short delay if elementorFrontend is not ready
-            setTimeout(addElementorHooks, 100);
+            // Retry with exponential backoff, but limit attempts
+            let retryCount = 0;
+            const maxRetries = 50; // 5 seconds max
+            
+            function retryAddHooks() {
+                if (retryCount >= maxRetries) {
+                    console.warn('ProElements: Gave up waiting for elementorFrontend.hooks after 5 seconds');
+                    return;
+                }
+                
+                if (typeof elementorFrontend !== 'undefined' && 
+                    elementorFrontend.hooks && 
+                    typeof elementorFrontend.hooks.addAction === 'function') {
+                    try {
+                        elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
+                        console.log('ProElements: Successfully added Elementor hooks on retry', retryCount);
+                    } catch (error) {
+                        console.warn('ProElements: Failed to add Elementor hooks on retry:', error);
+                    }
+                } else {
+                    retryCount++;
+                    setTimeout(retryAddHooks, 100);
+                }
+            }
+            
+            retryAddHooks();
         }
     }
     
     // Start trying to add hooks
     addElementorHooks();
+    
+    // Also listen for elementor events
+    if (typeof jQuery !== 'undefined') {
+        jQuery(document).on('elementor/frontend/init', function() {
+            console.log('ProElements: Elementor frontend initialized');
+            addElementorHooks();
+        });
+    }
 
     // Additional fix for webpack modules
     if (typeof __webpack_require__ !== 'undefined' && typeof __webpack_require__.r === 'undefined') {
