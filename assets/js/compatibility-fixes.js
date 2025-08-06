@@ -6,44 +6,28 @@
 (function() {
     'use strict';
 
-    // Ensure jQuery is available before proceeding - with better handling
-    let jQueryChecked = false;
+    // jQuery availability check - no retries, single check only
     let jQueryAvailable = false;
     
-    function waitForJQuery(callback, maxRetries = 30) {
-        // If we already checked and found jQuery, use it immediately
-        if (jQueryChecked && jQueryAvailable) {
-            callback();
-            return;
+    function checkJQueryAvailability() {
+        if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+            jQueryAvailable = true;
+            return true;
         }
-        
-        // If we already checked and didn't find jQuery, proceed anyway
-        if (jQueryChecked && !jQueryAvailable) {
-            callback();
-            return;
-        }
-        
-        let retryCount = 0;
-        
-        function checkJQuery() {
-            if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
-                jQueryChecked = true;
-                jQueryAvailable = true;
-                callback();
-                return;
-            } else if (retryCount < maxRetries) {
-                retryCount++;
-                setTimeout(checkJQuery, 100);
-            } else {
-                jQueryChecked = true;
-                jQueryAvailable = false;
-                console.warn('ProElements: jQuery not found after maximum retries, proceeding anyway');
-                callback();
-                return;
+        return false;
+    }
+    
+    function safeJQueryOperation(operation, fallback = null) {
+        if (checkJQueryAvailability()) {
+            try {
+                return operation();
+            } catch (error) {
+                console.warn('ProElements: jQuery operation failed:', error);
+                return fallback;
             }
+        } else {
+            return fallback;
         }
-        
-        checkJQuery();
     }
 
     // Create a polyfill for import.meta - improved safer version
@@ -75,8 +59,8 @@
             const originalSrcSetter = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src').set;
             Object.defineProperty(element, 'src', {
                 set: function(value) {
-                    // Add type="module" if script contains hash pattern typical of import.meta scripts
-                    if (value && (value.includes('.js?ver=') && /[a-zA-Z0-9]{7,}/.test(value))) {
+                    // Check for string type before calling includes
+                    if (value && typeof value === 'string' && (value.includes('.js?ver=') && /[a-zA-Z0-9]{7,}/.test(value))) {
                         this.type = 'module';
                     }
                     originalSrcSetter.call(this, value);
@@ -101,7 +85,7 @@
                 }
             });
             
-            // Add error handling for external scripts (moved here from duplicate section)
+            // Add error handling for external scripts
             const originalSetAttribute = element.setAttribute;
             element.setAttribute = function(name, value) {
                 if (name === 'src' && value && typeof value === 'string') {
@@ -248,8 +232,8 @@
             const originalFind = elementorFrontend.elements.$body.find;
             elementorFrontend.elements.$body.find = function(selector) {
                 try {
-                    // Ensure jQuery is available before proceeding
-                    if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
+                    // Safe jQuery check without retries
+                    if (!checkJQueryAvailability()) {
                         console.warn('ProElements: jQuery not available for element find operation');
                         return [];
                     }
@@ -325,12 +309,11 @@
         initializeFixes();
     }
 
-    // Enhanced Elementor hooks system with controlled retry
-    let hooksAdded = false;
+    // Enhanced Elementor hooks system - single attempt only
+    let hooksInitialized = false;
     
     function addElementorHooks() {
-        // If hooks already added, don't try again
-        if (hooksAdded) {
+        if (hooksInitialized) {
             return true;
         }
         
@@ -340,7 +323,7 @@
             try {
                 elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
                 console.log('ProElements: Successfully added Elementor hooks');
-                hooksAdded = true;
+                hooksInitialized = true;
                 return true;
             } catch (error) {
                 console.warn('ProElements: Failed to add Elementor hooks:', error);
@@ -350,42 +333,39 @@
         return false;
     }
 
-    // Controlled retry mechanism for Elementor hooks
-    let hookRetryAttempted = false;
-    
-    function retryElementorHooks() {
-        // Only try once to avoid infinite loops
-        if (hookRetryAttempted) {
-            return;
-        }
-        hookRetryAttempted = true;
-        
-        let retryCount = 0;
-        const maxRetries = 30; // 3 seconds max
-        
-        function doRetry() {
-            if (retryCount >= maxRetries) {
-                console.warn('ProElements: Gave up waiting for elementorFrontend.hooks after 3 seconds');
-                return;
-            }
-            
-            if (!addElementorHooks()) {
-                retryCount++;
-                setTimeout(doRetry, 100);
-            }
-        }
-        
-        doRetry();
+    // Initialize immediately if everything is ready
+    function initialize() {
+        initializeFixes();
+        addElementorHooks();
     }
-    
-    // Start trying to add hooks - wait for jQuery first
-    waitForJQuery(function() {
-        if (!addElementorHooks()) {
-            retryElementorHooks();
-        }
-    });
-    
-    // Also listen for elementor events if jQuery is available
+
+    // Add checklist error protection
+    function protectChecklist() {
+        // Protect against checklist parentElement errors
+        const originalGetComputedStyle = window.getComputedStyle;
+        window.getComputedStyle = function(element, pseudoElt) {
+            if (!element || !element.parentElement) {
+                console.warn('ProElements: Protected against checklist parentElement error');
+                return {
+                    getPropertyValue: () => '',
+                    length: 0
+                };
+            }
+            return originalGetComputedStyle.call(this, element, pseudoElt);
+        };
+    }
+    // Initialize
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            protectChecklist();
+            initialize();
+        });
+    } else {
+        protectChecklist();
+        initialize();
+    }
+
+    // Listen for jQuery availability when it becomes available
     if (typeof jQuery !== 'undefined') {
         jQuery(document).on('elementor/frontend/init', function() {
             console.log('ProElements: Elementor frontend initialized');

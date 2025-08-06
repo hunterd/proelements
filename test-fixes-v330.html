@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProElements Compatibility Fixes Test (v3.30.2)</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .test-container { background: white; padding: 20px; margin: 10px 0; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .test-title { color: #333; margin-bottom: 10px; }
+        .test-result { padding: 10px; margin: 5px 0; border-radius: 3px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        code { background: #f8f9fa; padding: 2px 4px; border-radius: 3px; }
+        .console-output { background: #000; color: #0f0; padding: 10px; font-family: monospace; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>ProElements Compatibility Fixes Test (v3.30.2)</h1>
+    <p>This page tests the new compatibility fixes that eliminate infinite retry loops and handle various JavaScript errors.</p>
+
+    <div class="test-container">
+        <h3 class="test-title">Test 1: import.meta Polyfill</h3>
+        <div id="test1-result"></div>
+    </div>
+
+    <div class="test-container">
+        <h3 class="test-title">Test 2: String Type Safety (t.includes fix)</h3>
+        <div id="test2-result"></div>
+    </div>
+
+    <div class="test-container">
+        <h3 class="test-title">Test 3: DataCloneError Prevention</h3>
+        <div id="test3-result"></div>
+    </div>
+
+    <div class="test-container">
+        <h3 class="test-title">Test 4: Checklist ParentElement Protection</h3>
+        <div id="test4-result"></div>
+    </div>
+
+    <div class="test-container">
+        <h3 class="test-title">Test 5: jQuery Availability Check (No Infinite Retries)</h3>
+        <div id="test5-result"></div>
+    </div>
+
+    <div class="test-container">
+        <h3 class="test-title">Console Output</h3>
+        <div class="console-output" id="console-output">
+            Monitoring console for ProElements messages...<br>
+        </div>
+    </div>
+
+    <!-- Load ProElements compatibility fixes -->
+    <script src="assets/js/compatibility-fixes.min.js"></script>
+    <script src="assets/js/editor-compatibility-fixes.min.js"></script>
+
+    <script>
+        // Capture console messages
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+        const consoleOutput = document.getElementById('console-output');
+
+        function addToConsole(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            consoleOutput.innerHTML += `[${timestamp}] ${type}: ${message}<br>`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        console.log = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('ProElements:')) {
+                addToConsole('LOG', message);
+            }
+            originalLog.apply(console, args);
+        };
+
+        console.warn = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('ProElements:')) {
+                addToConsole('WARN', message);
+            }
+            originalWarn.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('ProElements:')) {
+                addToConsole('ERROR', message);
+            }
+            originalError.apply(console, args);
+        };
+
+        // Test functions
+        function showResult(testId, success, message) {
+            const element = document.getElementById(testId + '-result');
+            element.className = 'test-result ' + (success ? 'success' : 'error');
+            element.innerHTML = (success ? '✅ PASS: ' : '❌ FAIL: ') + message;
+        }
+
+        function showWarning(testId, message) {
+            const element = document.getElementById(testId + '-result');
+            element.className = 'test-result warning';
+            element.innerHTML = '⚠️ WARNING: ' + message;
+        }
+
+        function showInfo(testId, message) {
+            const element = document.getElementById(testId + '-result');
+            element.className = 'test-result info';
+            element.innerHTML = 'ℹ️ INFO: ' + message;
+        }
+
+        // Run tests
+        function runTests() {
+            addToConsole('INFO', 'Starting ProElements compatibility tests...');
+
+            // Test 1: import.meta polyfill
+            try {
+                if (typeof window.importMeta !== 'undefined') {
+                    showResult('test1', true, `import.meta polyfill available with URL: ${window.importMeta.url}`);
+                } else {
+                    showResult('test1', false, 'import.meta polyfill not found');
+                }
+            } catch (error) {
+                showResult('test1', false, 'Error testing import.meta: ' + error.message);
+            }
+
+            // Test 2: String type safety
+            try {
+                // This should not throw "t.includes is not a function" error
+                const mockElement = document.createElement('script');
+                const descriptor = Object.getOwnPropertyDescriptor(mockElement, 'src') || 
+                                 Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+                
+                if (descriptor && descriptor.set) {
+                    // Try to trigger the code path that was causing the error
+                    descriptor.set.call(mockElement, null); // This should not crash
+                    descriptor.set.call(mockElement, undefined); // This should not crash
+                    descriptor.set.call(mockElement, 'test.js?ver=abc123'); // Valid string
+                    showResult('test2', true, 'String type safety checks passed');
+                } else {
+                    showWarning('test2', 'Could not test script src descriptor (may not be overridden yet)');
+                }
+            } catch (error) {
+                showResult('test2', false, 'String type safety test failed: ' + error.message);
+            }
+
+            // Test 3: DataCloneError prevention
+            try {
+                const testURL = new URL(window.location.href);
+                window.postMessage({ testURL: testURL }, '*');
+                showResult('test3', true, 'DataCloneError prevention test passed');
+            } catch (error) {
+                if (error.name === 'DataCloneError') {
+                    showResult('test3', false, 'DataCloneError not prevented: ' + error.message);
+                } else {
+                    showResult('test3', true, 'DataCloneError prevented, got different error: ' + error.message);
+                }
+            }
+
+            // Test 4: Checklist protection
+            try {
+                const mockElement = { parentElement: null };
+                // This should not throw "Cannot read properties of null"
+                if (typeof window.getComputedStyle === 'function') {
+                    const style = window.getComputedStyle(mockElement);
+                    showResult('test4', true, 'Checklist parentElement protection working');
+                } else {
+                    showWarning('test4', 'getComputedStyle not available for testing');
+                }
+            } catch (error) {
+                showResult('test4', false, 'Checklist protection failed: ' + error.message);
+            }
+
+            // Test 5: jQuery availability (should not cause infinite retries)
+            let retryCount = 0;
+            const startTime = Date.now();
+            
+            function checkForInfiniteRetries() {
+                const messages = consoleOutput.innerHTML;
+                const retryMatches = messages.match(/jQuery not found after maximum retries/g);
+                if (retryMatches && retryMatches.length > 1) {
+                    showResult('test5', false, `Infinite retry detected: ${retryMatches.length} retry messages found`);
+                } else {
+                    setTimeout(() => {
+                        const elapsed = Date.now() - startTime;
+                        if (elapsed > 5000) { // After 5 seconds
+                            const finalMatches = consoleOutput.innerHTML.match(/jQuery not found after maximum retries/g);
+                            if (!finalMatches || finalMatches.length <= 1) {
+                                showResult('test5', true, 'No infinite jQuery retries detected after 5 seconds');
+                            } else {
+                                showResult('test5', false, `${finalMatches.length} retry messages found after 5 seconds`);
+                            }
+                        } else {
+                            checkForInfiniteRetries();
+                        }
+                    }, 1000);
+                }
+            }
+            
+            checkForInfiniteRetries();
+        }
+
+        // Start tests after a brief delay
+        setTimeout(runTests, 1000);
+
+        // Monitor for specific error patterns that should NOT appear
+        window.addEventListener('error', function(event) {
+            if (event.error && event.error.message) {
+                const message = event.error.message;
+                if (message.includes('import.meta')) {
+                    addToConsole('ERROR', 'Uncaught import.meta error detected: ' + message);
+                } else if (message.includes('t.includes is not a function')) {
+                    addToConsole('ERROR', 'String type error detected: ' + message);
+                } else if (message.includes('parentElement')) {
+                    addToConsole('ERROR', 'ParentElement error detected: ' + message);
+                }
+            }
+        });
+
+        addToConsole('INFO', 'Test environment initialized. Monitoring for 5 seconds...');
+    </script>
+</body>
+</html>

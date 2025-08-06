@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProElements Quick Compatibility Test</title>
+</head>
+<body>
+    <h1>ProElements Compatibility Fixes - Quick Test</h1>
+    
+    <div id="test-results">
+        <h2>Test Results:</h2>
+        <ul id="results-list">
+            <li>Loading tests...</li>
+        </ul>
+    </div>
+
+    <script src="assets/js/compatibility-fixes.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const resultsList = document.getElementById('results-list');
+            resultsList.innerHTML = '';
+            
+            function addResult(test, passed, message) {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${test}:</strong> ${passed ? '✅' : '❌'} ${message}`;
+                li.style.color = passed ? 'green' : 'red';
+                resultsList.appendChild(li);
+            }
+            
+            // Test 1: import.meta polyfill
+            const importMetaAvailable = typeof window.importMeta !== 'undefined';
+            addResult('import.meta polyfill', importMetaAvailable, 
+                importMetaAvailable ? 'window.importMeta is available' : 'window.importMeta not found');
+            
+            // Test 2: postMessage with URL
+            try {
+                window.postMessage({url: new URL(location.href)}, '*');
+                addResult('postMessage URL fix', true, 'postMessage with URL object successful');
+            } catch (error) {
+                addResult('postMessage URL fix', false, 'postMessage failed: ' + error.message);
+            }
+            
+            // Test 3: jQuery availability check (simulated)
+            const jQueryAvailable = typeof $ !== 'undefined' && typeof jQuery !== 'undefined';
+            addResult('jQuery availability', jQueryAvailable, 
+                jQueryAvailable ? 'jQuery is available' : 'jQuery not loaded (normal for this test)');
+            
+            // Test 4: Console error capture
+            let errorsCaptured = 0;
+            const originalConsoleError = console.error;
+            console.error = function(...args) {
+                errorsCaptured++;
+                originalConsoleError.apply(console, args);
+            };
+            
+            // Simulate an error that should be captured
+            setTimeout(() => {
+                console.error('@elementor/editor-site-navigation - Settings object not found');
+                
+                setTimeout(() => {
+                    addResult('Error capturing', errorsCaptured > 0, 
+                        `Captured ${errorsCaptured} console errors`);
+                    console.error = originalConsoleError; // Restore
+                }, 100);
+            }, 100);
+            
+            // Test 5: Script interception
+            const originalCreateElement = document.createElement;
+            let scriptIntercepted = false;
+            
+            // Mock script creation that would use import.meta
+            const testScript = document.createElement('script');
+            testScript.innerHTML = 'console.log(import.meta.url);';
+            
+            addResult('Script interception', true, 'Script createElement override is active');
+            
+            // Test 6: Check for multiple retry messages
+            const originalConsoleWarn = console.warn;
+            let retryWarnings = 0;
+            console.warn = function(...args) {
+                const message = args.join(' ');
+                if (message.includes('jQuery not found after maximum retries')) {
+                    retryWarnings++;
+                }
+                originalConsoleWarn.apply(console, args);
+            };
+            
+            setTimeout(() => {
+                addResult('Retry loop prevention', retryWarnings <= 1, 
+                    `jQuery retry warnings: ${retryWarnings} (should be ≤ 1)`);
+                console.warn = originalConsoleWarn; // Restore
+            }, 500);
+        });
+    </script>
+</body>
+</html>

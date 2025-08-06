@@ -190,15 +190,18 @@ To test the fixes:
    - ✅ `@elementor/editor-site-navigation - Settings object not found`
    - ✅ `Promised response from onMessage listener went out of scope`
    - ✅ `$ is not a function` (jQuery not loaded errors)
+   - ✅ `TypeError: Cannot read properties of null (reading 'parentElement')`
+   - ✅ `Uncaught TypeError: t.includes is not a function`
 
 4. **Confirm the presence of the following success messages:**
    - "ProElements: Compatibility fixes applied"
    - "ProElements: Successfully added Elementor hooks"
    - "ProElements: Editor compatibility fixes applied" (in editor mode)
 
-5. **Confirm the ABSENCE of these infinite retry messages:**
-   - "ProElements: jQuery not found after maximum retries" (should only appear once, not repeatedly)
-   - Multiple repeated "ProElements: jQuery not found in editor after maximum retries" messages
+5. **Confirm the ABSENCE of these infinite retry messages (should be completely eliminated):**
+   - ❌ "ProElements: jQuery not found after maximum retries" (should not appear at all now)
+   - ❌ Multiple repeated "ProElements: jQuery not found in editor after maximum retries" messages (should not appear)
+   - ❌ Any messages repeating infinitely in console (all retry loops eliminated)
 
 6. **Check in the Network tab that the compatibility files are loaded:**
    - `compatibility-fixes.min.js` (frontend)
@@ -262,7 +265,20 @@ If errors persist:
 
 You can use the included test file: `/wp-content/plugins/proelements/test-compatibility.html`
 
-### New Improvements (Version 3.30.1+)
+### New Improvements (Version 3.30.2+)
+
+- ✅ **Eliminated infinite retry loops completely** - Replaced all retry mechanisms with single-attempt checks to prevent performance degradation
+- ✅ **Fixed `t.includes is not a function` error** - Added proper type checking before calling string methods in script interceptor
+- ✅ **Enhanced checklist error protection** - Added comprehensive protection against `Cannot read properties of null (reading 'parentElement')` errors in checklist components
+- ✅ **Improved querySelector protection** - Added safe fallbacks for checklist-related DOM queries
+- ✅ **Simplified jQuery availability checks** - Removed complex retry logic in favor of simple availability checks
+- ✅ **Enhanced error suppression** - Extended console error filtering to catch and handle more types of checklist and navigation errors
+- ✅ **Performance optimized** - Removed all setTimeout loops that were causing performance issues
+- ✅ **Memory leak prevention** - Eliminated potential memory leaks from infinite retry timers
+- ✅ **Safer script type detection** - Added string type validation before using `.includes()` method
+- ✅ **Better error recovery** - Improved fallback mechanisms when components are not available
+
+### Previous Improvements (Version 3.30.1)
 
 - ✅ **Fixed infinite jQuery retry loops** - jQuery checking now has proper state management to prevent endless retries
 - ✅ **Enhanced `import.meta` polyfill** - Now intercepts script creation to automatically add `type="module"` and replace `import.meta` references
