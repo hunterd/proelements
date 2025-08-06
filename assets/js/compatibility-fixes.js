@@ -7,37 +7,36 @@
     'use strict';
 
     // Ensure jQuery is available before proceeding
-    function waitForJQuery(callback, maxRetries = 100) {
+    function waitForJQuery(callback, maxRetries = 50) {
         let retryCount = 0;
         
         function checkJQuery() {
             if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
                 callback();
+                return;
             } else if (retryCount < maxRetries) {
                 retryCount++;
-                setTimeout(checkJQuery, 50);
+                setTimeout(checkJQuery, 100);
             } else {
                 console.warn('ProElements: jQuery not found after maximum retries, proceeding anyway');
                 callback();
+                return;
             }
         }
         
         checkJQuery();
     }
 
-    // Fix for import.meta errors in non-module scripts
-    if (typeof window.import === 'undefined') {
-        window.import = function() {
-            return Promise.reject(new Error('import() is not supported in this context'));
-        };
-    }
-
-    // Create a polyfill for import.meta - enhanced version
+    // Create a polyfill for import.meta - safe version
     if (typeof window.importMeta === 'undefined') {
         window.importMeta = {
             url: window.location.href,
             resolve: function(specifier) {
-                return new URL(specifier, window.location.href).href;
+                try {
+                    return new URL(specifier, window.location.href).href;
+                } catch (e) {
+                    return specifier;
+                }
             },
             env: {
                 MODE: window.location.hostname === 'localhost' ? 'development' : 'production',
@@ -47,70 +46,35 @@
         };
     }
     
-    // Global import.meta polyfill - multiple approaches
-    if (typeof globalThis !== 'undefined') {
-        // Approach 1: Direct assignment
-        if (typeof globalThis.import === 'undefined') {
-            try {
-                Object.defineProperty(globalThis, 'import', {
-                    value: {
-                        meta: window.importMeta
-                    },
-                    writable: false,
-                    configurable: true
-                });
-            } catch (e) {
-                // Fallback if property cannot be defined
-                globalThis.import = { meta: window.importMeta };
-            }
-        } else if (globalThis.import && !globalThis.import.meta) {
-            globalThis.import.meta = window.importMeta;
-        }
-        
-        // Approach 2: Window-level polyfill
-        if (typeof window.import === 'undefined') {
-            window.import = { meta: window.importMeta };
-        } else if (!window.import.meta) {
-            window.import.meta = window.importMeta;
+    // Safe global import.meta polyfill - avoid read-only conflicts
+    if (typeof globalThis !== 'undefined' && typeof globalThis.import === 'undefined') {
+        try {
+            globalThis.import = {
+                meta: window.importMeta
+            };
+        } catch (e) {
+            console.warn('ProElements: Could not set global import.meta, using fallback');
         }
     }
     
-    // Approach 3: Script-level polyfill by intercepting script evaluation
+    // Window-level polyfill only if needed
+    if (typeof window.import === 'undefined') {
+        try {
+            window.import = { 
+                meta: window.importMeta 
+            };
+        } catch (e) {
+            console.warn('ProElements: Could not set window.import');
+        }
+    }
+
+    // Script evaluation interceptor for import.meta replacement
     const originalEval = window.eval;
     window.eval = function(code) {
         if (typeof code === 'string' && code.includes('import.meta')) {
-            // Replace import.meta with window.importMeta
             code = code.replace(/import\.meta/g, 'window.importMeta');
         }
         return originalEval.call(this, code);
-    };
-    
-    // Approach 4: Intercept script loading to fix import.meta errors
-    const originalAppendChild = Node.prototype.appendChild;
-    Node.prototype.appendChild = function(child) {
-        if (child.tagName === 'SCRIPT' && child.src) {
-            // Add module type to scripts that use import.meta
-            const originalOnLoad = child.onload;
-            child.onload = function() {
-                // Script loaded successfully
-                if (originalOnLoad) originalOnLoad.call(this);
-            };
-            
-            const originalOnError = child.onerror;
-            child.onerror = function(error) {
-                // Check if error is related to import.meta
-                if (error && error.message && error.message.includes('import.meta')) {
-                    console.warn('ProElements: import.meta error caught for script:', child.src);
-                    // Try to reload as module
-                    if (!child.type || child.type !== 'module') {
-                        child.type = 'module';
-                        console.log('ProElements: Converted script to module type:', child.src);
-                    }
-                }
-                if (originalOnError) originalOnError.call(this, error);
-            };
-        }
-        return originalAppendChild.call(this, child);
     };
 
     // Fix DataCloneError: URL object could not be cloned
@@ -122,6 +86,9 @@
                 message = JSON.parse(JSON.stringify(message, function(key, value) {
                     if (value instanceof URL) {
                         return value.href;
+                    }
+                    if (value instanceof File || value instanceof Blob) {
+                        return '[Object ' + value.constructor.name + ']';
                     }
                     return value;
                 }));
@@ -140,25 +107,29 @@
 
     // Fix for "Promised response from onMessage listener went out of scope"
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-        const originalAddListener = chrome.runtime.onMessage.addListener;
-        chrome.runtime.onMessage.addListener = function(callback) {
-            const wrappedCallback = function(message, sender, sendResponse) {
-                try {
-                    const result = callback(message, sender, sendResponse);
-                    if (result instanceof Promise) {
-                        result.catch(error => {
-                            console.warn('ProElements: Caught promise error in onMessage listener:', error);
-                        });
-                        return true; // Keep the message channel open for async response
+        try {
+            const originalAddListener = chrome.runtime.onMessage.addListener;
+            chrome.runtime.onMessage.addListener = function(callback) {
+                const wrappedCallback = function(message, sender, sendResponse) {
+                    try {
+                        const result = callback(message, sender, sendResponse);
+                        if (result instanceof Promise) {
+                            result.catch(error => {
+                                console.warn('ProElements: Caught promise error in onMessage listener:', error);
+                            });
+                            return true; // Keep the message channel open for async response
+                        }
+                        return result;
+                    } catch (error) {
+                        console.warn('ProElements: Caught error in onMessage listener:', error);
+                        return false;
                     }
-                    return result;
-                } catch (error) {
-                    console.warn('ProElements: Caught error in onMessage listener:', error);
-                    return false;
-                }
+                };
+                return originalAddListener.call(this, wrappedCallback);
             };
-            return originalAddListener.call(this, wrappedCallback);
-        };
+        } catch (e) {
+            console.warn('ProElements: Could not override chrome extension messaging');
+        }
     }
 
     // Override Worker constructor to handle DataCloneError
@@ -197,66 +168,59 @@
         // Wait for elementorFrontend to be fully loaded AND jQuery
         if (typeof elementorFrontend === 'undefined' || 
             !elementorFrontend.elements || 
-            !elementorFrontend.elements.$body ||
-            typeof $ === 'undefined' ||
-            typeof jQuery === 'undefined') {
-            setTimeout(checkElementorElements, 100);
-            return;
+            !elementorFrontend.elements.$body) {
+            return; // Don't retry indefinitely, just wait for proper initialization
         }
 
-        // Fix for "Can't attach preview to document" errors
-        const originalFind = elementorFrontend.elements.$body.find;
-        elementorFrontend.elements.$body.find = function(selector) {
-            try {
-                // Ensure jQuery is available before proceeding
-                if (typeof $ === 'undefined') {
-                    console.error('ProElements: Error in element find: jQuery ($) is not available');
-                    return jQuery ? jQuery([]) : [];
-                }
+        try {
+            // Fix for "Can't attach preview to document" errors
+            const originalFind = elementorFrontend.elements.$body.find;
+            elementorFrontend.elements.$body.find = function(selector) {
+                try {
+                    // Ensure jQuery is available before proceeding
+                    if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
+                        console.warn('ProElements: jQuery not available for element find operation');
+                        return jQuery ? jQuery([]) : [];
+                    }
 
-                const result = originalFind.call(this, selector);
-                if (result.length === 0 && selector.includes('.elementor-')) {
-                    console.warn('ProElements: Element not found, attempting to create:', selector);
-                    
-                    // Try to create missing elementor container
-                    const matches = selector.match(/\.elementor-(\d+)/);
-                    if (matches && matches[1]) {
-                        const documentId = matches[1];
-                        let container = document.querySelector(selector);
+                    const result = originalFind.call(this, selector);
+                    if (result.length === 0 && selector.includes('.elementor-')) {
+                        console.warn('ProElements: Element not found, attempting to create:', selector);
                         
-                        if (!container) {
-                            container = document.createElement('div');
-                            container.className = `elementor elementor-${documentId}`;
-                            container.dataset.elementorType = 'wp-page';
-                            container.dataset.elementorId = documentId;
-                            document.body.appendChild(container);
-                            console.log(`ProElements: Created missing container for document ${documentId}`);
+                        // Try to create missing elementor container
+                        const matches = selector.match(/\.elementor-(\d+)/);
+                        if (matches && matches[1]) {
+                            const documentId = matches[1];
+                            let container = document.querySelector(selector);
+                            
+                            if (!container) {
+                                container = document.createElement('div');
+                                container.className = `elementor elementor-${documentId}`;
+                                container.dataset.elementorType = 'wp-page';
+                                container.dataset.elementorId = documentId;
+                                document.body.appendChild(container);
+                                console.log(`ProElements: Created missing container for document ${documentId}`);
+                            }
+                            
+                            return $(container);
                         }
-                        
-                        return $(container);
+                    }
+                    return result;
+                } catch (error) {
+                    console.error('ProElements: Error in element find:', error);
+                    // Return safe empty result based on what's available
+                    if (typeof $ !== 'undefined') {
+                        return $([]);
+                    } else if (typeof jQuery !== 'undefined') {
+                        return jQuery([]);
+                    } else {
+                        return [];
                     }
                 }
-                return result;
-            } catch (error) {
-                console.error('ProElements: Error in element find:', error);
-                // Return safe empty result based on what's available
-                if (typeof $ !== 'undefined') {
-                    return $([]);
-                } else if (typeof jQuery !== 'undefined') {
-                    return jQuery([]);
-                } else {
-                    return [];
-                }
-            }
-        };
-    }
-
-    // Fix for JQMIGRATE warnings
-    if (typeof jQuery !== 'undefined' && jQuery.migrateWarnings) {
-        jQuery.migrateTrace = false;
-        jQuery.migrateReset = function() {
-            jQuery.migrateWarnings.length = 0;
-        };
+            };
+        } catch (error) {
+            console.warn('ProElements: Could not override elementorFrontend find method:', error);
+        }
     }
 
     // Fix for missing script elements (stats.wp.com and similar)
@@ -311,7 +275,7 @@
         initializeFixes();
     }
 
-    // Also run when Elementor is loaded - with enhanced safety check
+    // Enhanced Elementor hooks system with controlled retry
     function addElementorHooks() {
         if (typeof elementorFrontend !== 'undefined' && 
             elementorFrontend.hooks && 
@@ -319,54 +283,46 @@
             try {
                 elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
                 console.log('ProElements: Successfully added Elementor hooks');
+                return true;
             } catch (error) {
                 console.warn('ProElements: Failed to add Elementor hooks:', error);
+                return false;
             }
-        } else {
-            // Retry with exponential backoff, but limit attempts
-            let retryCount = 0;
-            const maxRetries = 50; // 5 seconds max
-            
-            function retryAddHooks() {
-                if (retryCount >= maxRetries) {
-                    console.warn('ProElements: Gave up waiting for elementorFrontend.hooks after 5 seconds');
-                    return;
-                }
-                
-                if (typeof elementorFrontend !== 'undefined' && 
-                    elementorFrontend.hooks && 
-                    typeof elementorFrontend.hooks.addAction === 'function') {
-                    try {
-                        elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
-                        console.log('ProElements: Successfully added Elementor hooks on retry', retryCount);
-                    } catch (error) {
-                        console.warn('ProElements: Failed to add Elementor hooks on retry:', error);
-                    }
-                } else {
-                    retryCount++;
-                    setTimeout(retryAddHooks, 100);
-                }
-            }
-            
-            retryAddHooks();
         }
+        return false;
+    }
+
+    // Controlled retry mechanism for Elementor hooks
+    function retryElementorHooks() {
+        let retryCount = 0;
+        const maxRetries = 30; // 3 seconds max
+        
+        function doRetry() {
+            if (retryCount >= maxRetries) {
+                console.warn('ProElements: Gave up waiting for elementorFrontend.hooks after 3 seconds');
+                return;
+            }
+            
+            if (!addElementorHooks()) {
+                retryCount++;
+                setTimeout(doRetry, 100);
+            }
+        }
+        
+        doRetry();
     }
     
     // Start trying to add hooks - wait for jQuery first
     waitForJQuery(function() {
-        addElementorHooks();
+        if (!addElementorHooks()) {
+            retryElementorHooks();
+        }
     });
     
-    // Also listen for elementor events
+    // Also listen for elementor events if jQuery is available
     if (typeof jQuery !== 'undefined') {
         jQuery(document).on('elementor/frontend/init', function() {
             console.log('ProElements: Elementor frontend initialized');
-            addElementorHooks();
-        });
-    } else {
-        // Fallback: listen for DOMContentLoaded if jQuery is not available
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('ProElements: DOM loaded, attempting to add hooks');
             addElementorHooks();
         });
     }

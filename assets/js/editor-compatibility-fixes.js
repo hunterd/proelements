@@ -7,18 +7,20 @@
     'use strict';
 
     // Ensure jQuery is available before proceeding
-    function waitForJQuery(callback, maxRetries = 100) {
+    function waitForJQuery(callback, maxRetries = 30) {
         let retryCount = 0;
         
         function checkJQuery() {
             if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
                 callback();
+                return;
             } else if (retryCount < maxRetries) {
                 retryCount++;
-                setTimeout(checkJQuery, 50);
+                setTimeout(checkJQuery, 100);
             } else {
                 console.warn('ProElements: jQuery not found in editor after maximum retries, proceeding anyway');
                 callback();
+                return;
             }
         }
         
@@ -53,53 +55,57 @@
         }
 
         // Override preview attachment to handle missing elements
-        if (elementor.modules && elementor.modules.layouts && elementor.modules.layouts.panel) {
-            const originalAttachPreview = elementor.modules.layouts.panel.attachPreview;
-            if (originalAttachPreview) {
-                elementor.modules.layouts.panel.attachPreview = function(documentId, elementSelector) {
-                    try {
-                        let element = document.querySelector(elementSelector);
-                        if (!element) {
-                            console.warn(`ProElements: Cannot attach preview to document '${documentId}', element '${elementSelector}' was not found. Creating it...`);
-                            
-                            // Create the missing element
-                            element = document.createElement('div');
-                            element.className = `elementor elementor-${documentId}`;
-                            element.dataset.elementorType = 'wp-page';
-                            element.dataset.elementorId = documentId;
-                            document.body.appendChild(element);
+        try {
+            if (elementor.modules && elementor.modules.layouts && elementor.modules.layouts.panel) {
+                const originalAttachPreview = elementor.modules.layouts.panel.attachPreview;
+                if (originalAttachPreview) {
+                    elementor.modules.layouts.panel.attachPreview = function(documentId, elementSelector) {
+                        try {
+                            let element = document.querySelector(elementSelector);
+                            if (!element) {
+                                console.warn(`ProElements: Cannot attach preview to document '${documentId}', element '${elementSelector}' was not found. Creating it...`);
+                                
+                                // Create the missing element
+                                element = document.createElement('div');
+                                element.className = `elementor elementor-${documentId}`;
+                                element.dataset.elementorType = 'wp-page';
+                                element.dataset.elementorId = documentId;
+                                document.body.appendChild(element);
+                            }
+                            return originalAttachPreview.call(this, documentId, elementSelector);
+                        } catch (error) {
+                            console.error('ProElements: Error in attachPreview:', error);
+                            return false;
                         }
-                        return originalAttachPreview.call(this, documentId, elementSelector);
-                    } catch (error) {
-                        console.error('ProElements: Error in attachPreview:', error);
-                        return false;
-                    }
-                };
+                    };
+                }
             }
-        }
 
-        // Additional fix for web-cli preview attachment
-        if (typeof elementorPreview !== 'undefined' && elementorPreview.preview) {
-            const originalAttach = elementorPreview.preview.attach;
-            if (originalAttach) {
-                elementorPreview.preview.attach = function(documentId, elementSelector) {
-                    try {
-                        let element = document.querySelector(elementSelector);
-                        if (!element) {
-                            console.warn(`ProElements: Preview attach - element '${elementSelector}' not found for document '${documentId}'. Creating container...`);
-                            element = document.createElement('div');
-                            element.className = `elementor elementor-${documentId}`;
-                            element.dataset.elementorType = 'wp-page';
-                            element.dataset.elementorId = documentId;
-                            document.body.appendChild(element);
+            // Additional fix for web-cli preview attachment
+            if (typeof elementorPreview !== 'undefined' && elementorPreview.preview) {
+                const originalAttach = elementorPreview.preview.attach;
+                if (originalAttach) {
+                    elementorPreview.preview.attach = function(documentId, elementSelector) {
+                        try {
+                            let element = document.querySelector(elementSelector);
+                            if (!element) {
+                                console.warn(`ProElements: Preview attach - element '${elementSelector}' not found for document '${documentId}'. Creating container...`);
+                                element = document.createElement('div');
+                                element.className = `elementor elementor-${documentId}`;
+                                element.dataset.elementorType = 'wp-page';
+                                element.dataset.elementorId = documentId;
+                                document.body.appendChild(element);
+                            }
+                            return originalAttach.call(this, documentId, elementSelector);
+                        } catch (error) {
+                            console.error('ProElements: Error in preview attach:', error);
+                            return Promise.reject(error);
                         }
-                        return originalAttach.call(this, documentId, elementSelector);
-                    } catch (error) {
-                        console.error('ProElements: Error in preview attach:', error);
-                        return Promise.reject(error);
-                    }
-                };
+                    };
+                }
             }
+        } catch (error) {
+            console.warn('ProElements: Could not override preview attachment methods:', error);
         }
     }
 
@@ -107,35 +113,43 @@
     function fixLoopBuilderPreview() {
         if (typeof elementor === 'undefined') return;
 
-        // Check for loop builder elements
-        const loopElements = document.querySelectorAll('[data-elementor-type="loop-item"]');
-        loopElements.forEach(element => {
-            if (!element.dataset.elementorId) {
-                element.dataset.elementorId = Math.random().toString(36).substr(2, 9);
-            }
-        });
+        try {
+            // Check for loop builder elements
+            const loopElements = document.querySelectorAll('[data-elementor-type="loop-item"]');
+            loopElements.forEach(element => {
+                if (!element.dataset.elementorId) {
+                    element.dataset.elementorId = Math.random().toString(36).substr(2, 9);
+                }
+            });
+        } catch (error) {
+            console.warn('ProElements: Error fixing loop builder elements:', error);
+        }
     }
 
     // Fix for webpack modules in editor context
     function fixWebpackModules() {
-        // Ensure webpack runtime is available
-        if (typeof __webpack_require__ === 'undefined') {
-            window.__webpack_require__ = function(moduleId) {
-                console.warn('ProElements: webpack_require called but not available:', moduleId);
-                return {};
-            };
-        }
+        try {
+            // Ensure webpack runtime is available
+            if (typeof __webpack_require__ === 'undefined') {
+                window.__webpack_require__ = function(moduleId) {
+                    console.warn('ProElements: webpack_require called but not available:', moduleId);
+                    return {};
+                };
+            }
 
-        // Fix missing webpack chunk loading
-        if (typeof __webpack_require__.e === 'undefined') {
-            __webpack_require__.e = function(chunkId) {
-                console.warn('ProElements: webpack chunk loading not available:', chunkId);
-                return Promise.resolve();
-            };
+            // Fix missing webpack chunk loading
+            if (typeof __webpack_require__.e === 'undefined') {
+                __webpack_require__.e = function(chunkId) {
+                    console.warn('ProElements: webpack chunk loading not available:', chunkId);
+                    return Promise.resolve();
+                };
+            }
+        } catch (error) {
+            console.warn('ProElements: Error setting up webpack polyfills:', error);
         }
     }
 
-    // Fix for import.meta in editor modules - enhanced version
+    // Fix for import.meta in editor modules - safe version
     function fixImportMeta() {
         // Create comprehensive import.meta polyfill
         if (typeof window.importMeta === 'undefined') {
@@ -158,70 +172,55 @@
             };
         }
 
-        // Global import.meta assignment for modules
-        if (typeof globalThis !== 'undefined') {
+        // Safe approach: only try if import doesn't exist
+        if (typeof globalThis !== 'undefined' && typeof globalThis.import === 'undefined') {
             try {
-                Object.defineProperty(globalThis, 'import', {
-                    value: {
-                        meta: window.importMeta
-                    },
-                    writable: false,
-                    configurable: true
-                });
+                globalThis.import = {
+                    meta: window.importMeta
+                };
             } catch (e) {
-                // Fallback if property is already defined
-                if (globalThis.import && !globalThis.import.meta) {
-                    globalThis.import.meta = window.importMeta;
-                }
+                console.warn('ProElements: Could not set global import.meta, using fallback');
             }
         }
 
-        // Override import calls with better error handling
-        const originalImport = window.import;
-        window.import = function(specifier) {
+        // Window-level polyfill only if not existing
+        if (typeof window.import === 'undefined') {
             try {
-                if (originalImport && typeof originalImport === 'function') {
-                    return originalImport(specifier);
-                }
-                console.warn('ProElements: Dynamic import not supported, attempting fallback for:', specifier);
-                
-                // Attempt to load as regular script
-                return new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = specifier;
-                    script.onload = () => resolve({});
-                    script.onerror = () => reject(new Error(`Failed to load module: ${specifier}`));
-                    document.head.appendChild(script);
-                });
-            } catch (error) {
-                console.warn('ProElements: Import error:', error);
-                return Promise.reject(error);
+                window.import = {
+                    meta: window.importMeta
+                };
+            } catch (e) {
+                console.warn('ProElements: Could not set window.import');
             }
-        };
+        }
     }
 
     // Fix for editor iframe communication
     function fixEditorCommunication() {
-        // Override iframe messaging to prevent DataCloneError
-        const originalPostMessage = window.postMessage;
-        window.postMessage = function(message, targetOrigin, transfer) {
-            try {
-                // Sanitize message object
-                if (message && typeof message === 'object') {
-                    const sanitized = JSON.parse(JSON.stringify(message, (key, value) => {
-                        if (value instanceof URL) return value.href;
-                        if (value instanceof File) return '[File object]';
-                        if (value instanceof Blob) return '[Blob object]';
-                        if (typeof value === 'function') return '[Function]';
-                        return value;
-                    }));
-                    return originalPostMessage.call(this, sanitized, targetOrigin, transfer);
+        try {
+            // Override iframe messaging to prevent DataCloneError
+            const originalPostMessage = window.postMessage;
+            window.postMessage = function(message, targetOrigin, transfer) {
+                try {
+                    // Sanitize message object
+                    if (message && typeof message === 'object') {
+                        const sanitized = JSON.parse(JSON.stringify(message, (key, value) => {
+                            if (value instanceof URL) return value.href;
+                            if (value instanceof File) return '[File object]';
+                            if (value instanceof Blob) return '[Blob object]';
+                            if (typeof value === 'function') return '[Function]';
+                            return value;
+                        }));
+                        return originalPostMessage.call(this, sanitized, targetOrigin, transfer);
+                    }
+                    return originalPostMessage.call(this, message, targetOrigin, transfer);
+                } catch (error) {
+                    console.warn('ProElements: Fixed editor communication error:', error);
                 }
-                return originalPostMessage.call(this, message, targetOrigin, transfer);
-            } catch (error) {
-                console.warn('ProElements: Fixed editor communication error:', error);
-            }
-        };
+            };
+        } catch (error) {
+            console.warn('ProElements: Could not override postMessage:', error);
+        }
     }
 
     // Initialize all fixes
@@ -237,7 +236,7 @@
         });
     }
 
-    // Run fixes when DOM is ready - wait for jQuery first
+    // Run fixes when DOM is ready - wait for jQuery first with controlled retry
     function startInitialization() {
         waitForJQuery(function() {
             if (document.readyState === 'loading') {
@@ -252,19 +251,23 @@
     startInitialization();
 
     // Also run when entering editor mode
-    if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
-        elementorCommon.elements.$window.on('elementor:init', function() {
-            waitForJQuery(initializeEditorFixes);
-        });
-    } else {
-        // Fallback - try to listen for elementorCommon later
-        setTimeout(function() {
-            if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
-                elementorCommon.elements.$window.on('elementor:init', function() {
-                    waitForJQuery(initializeEditorFixes);
-                });
-            }
-        }, 1000);
+    try {
+        if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
+            elementorCommon.elements.$window.on('elementor:init', function() {
+                waitForJQuery(initializeEditorFixes);
+            });
+        } else {
+            // Fallback - try to listen for elementorCommon later
+            setTimeout(function() {
+                if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
+                    elementorCommon.elements.$window.on('elementor:init', function() {
+                        waitForJQuery(initializeEditorFixes);
+                    });
+                }
+            }, 1000);
+        }
+    } catch (error) {
+        console.warn('ProElements: Could not set up elementorCommon listeners:', error);
     }
 
 })();

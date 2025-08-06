@@ -8,11 +8,11 @@ This document explains the fixes applied to resolve JavaScript errors in ProElem
 
 **Issue:** Scripts use `import.meta` without being defined as ES6 modules.
 
-**Solution:** 
-- Enhanced polyfill for `import.meta` in `compatibility-fixes.js`
-- Multiple fallback approaches including global scope assignment and script evaluation interception
+**Solution:**
+- Safe polyfill for `import.meta` in `compatibility-fixes.js` that avoids read-only property conflicts
+- Multiple controlled fallback approaches without forcing property assignment
 - Function `add_module_type_to_scripts()` to add `type="module"` to necessary scripts
-- Scripts loaded with correct dependencies
+- Scripts loaded with correct dependencies and proper error handling
 
 ### 2. `DataCloneError: URL object could not be cloned`
 
@@ -76,19 +76,20 @@ This document explains the fixes applied to resolve JavaScript errors in ProElem
 **Issue:** Attempting to use hooks before elementorFrontend is fully loaded.
 
 **Solution:**
-- Enhanced retry mechanism with exponential backoff and maximum attempts
+- Controlled retry mechanism with maximum 30 attempts (3 seconds) for hooks
+- Maximum 50 attempts (5 seconds) for jQuery availability checks
 - Multiple event listeners for different Elementor initialization events
-- Graceful fallback when hooks are unavailable
+- Graceful fallback when hooks are unavailable to prevent infinite loops
 
 ### 9. `$ is not a function` (jQuery not loaded)
 
 **Issue:** jQuery not available when Elementor code attempts to use it.
 
 **Solution:**
-- Added comprehensive jQuery availability checks before using `$`
-- Intelligent waiting mechanism with retry for jQuery loading
+- Added controlled jQuery availability checks before using `$` (max 50 retries)
+- Controlled waiting mechanism with timeout for jQuery loading
 - Enhanced error handling with fallback for missing jQuery
-- Protection of all jQuery-dependent operations with wait functions
+- Protection of all jQuery-dependent operations with controlled wait functions
 
 ## Added Files
 
@@ -259,13 +260,15 @@ You can use the included test file: `/wp-content/plugins/proelements/test-compat
 
 ### New Improvements (Version 3.30.0+)
 
-- ✅ **Reinforced `import.meta` fix** with multiple fallback approaches
+- ✅ **Reinforced `import.meta` fix** with safer approach to avoid read-only property conflicts
 - ✅ **Chrome extension error handling** with listener protection
 - ✅ **Automatic creation of missing Elementor config objects**
-- ✅ **Intelligent retry system** for elementorFrontend hooks
+- ✅ **Controlled retry system** for elementorFrontend hooks (limited to 30 retries max)
+- ✅ **Enhanced jQuery availability protection** with controlled waiting (limited to 50 retries max)
 - ✅ **Improved FOUC prevention** with opacity transitions
 - ✅ **Extended protection against problematic external scripts**
 - ✅ **Script interception** for automatic module conversion
 - ✅ **Improved ES6 script detection** requiring module type
-- ✅ **Enhanced jQuery availability protection** with intelligent waiting
 - ✅ **Comprehensive error handling** for missing dependencies
+- ✅ **Fixed infinite retry loops** that were causing performance issues
+- ✅ **Safer polyfill implementation** avoiding "Cannot assign to read only property" errors
