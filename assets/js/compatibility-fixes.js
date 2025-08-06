@@ -6,18 +6,37 @@
 (function() {
     'use strict';
 
-    // Ensure jQuery is available before proceeding
-    function waitForJQuery(callback, maxRetries = 50) {
+    // Ensure jQuery is available before proceeding - with better handling
+    let jQueryChecked = false;
+    let jQueryAvailable = false;
+    
+    function waitForJQuery(callback, maxRetries = 30) {
+        // If we already checked and found jQuery, use it immediately
+        if (jQueryChecked && jQueryAvailable) {
+            callback();
+            return;
+        }
+        
+        // If we already checked and didn't find jQuery, proceed anyway
+        if (jQueryChecked && !jQueryAvailable) {
+            callback();
+            return;
+        }
+        
         let retryCount = 0;
         
         function checkJQuery() {
             if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+                jQueryChecked = true;
+                jQueryAvailable = true;
                 callback();
                 return;
             } else if (retryCount < maxRetries) {
                 retryCount++;
                 setTimeout(checkJQuery, 100);
             } else {
+                jQueryChecked = true;
+                jQueryAvailable = false;
                 console.warn('ProElements: jQuery not found after maximum retries, proceeding anyway');
                 callback();
                 return;
@@ -27,7 +46,7 @@
         checkJQuery();
     }
 
-    // Create a polyfill for import.meta - safe version
+    // Create a polyfill for import.meta - improved safer version
     if (typeof window.importMeta === 'undefined') {
         window.importMeta = {
             url: window.location.href,
@@ -46,7 +65,59 @@
         };
     }
     
-    // Safe global import.meta polyfill - avoid read-only conflicts
+    // Enhanced script content interceptor for import.meta replacement AND error handling
+    const originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+        const element = originalCreateElement.call(this, tagName);
+        
+        if (tagName.toLowerCase() === 'script') {
+            // Override the src setter to detect and fix import.meta scripts
+            const originalSrcSetter = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src').set;
+            Object.defineProperty(element, 'src', {
+                set: function(value) {
+                    // Add type="module" if script contains hash pattern typical of import.meta scripts
+                    if (value && (value.includes('.js?ver=') && /[a-zA-Z0-9]{7,}/.test(value))) {
+                        this.type = 'module';
+                    }
+                    originalSrcSetter.call(this, value);
+                },
+                get: function() {
+                    return this.getAttribute('src');
+                }
+            });
+            
+            // Override innerHTML to replace import.meta references
+            const originalInnerHTMLSetter = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+            Object.defineProperty(element, 'innerHTML', {
+                set: function(value) {
+                    if (typeof value === 'string' && value.includes('import.meta')) {
+                        value = value.replace(/import\.meta/g, 'window.importMeta');
+                        this.type = 'module';
+                    }
+                    originalInnerHTMLSetter.call(this, value);
+                },
+                get: function() {
+                    return originalInnerHTMLSetter.call(this);
+                }
+            });
+            
+            // Add error handling for external scripts (moved here from duplicate section)
+            const originalSetAttribute = element.setAttribute;
+            element.setAttribute = function(name, value) {
+                if (name === 'src' && value && typeof value === 'string') {
+                    // Add error handling for external scripts
+                    element.onerror = function() {
+                        console.warn('ProElements: Failed to load script:', value);
+                    };
+                }
+                return originalSetAttribute.call(this, name, value);
+            };
+        }
+        
+        return element;
+    };
+    
+    // Safe global import.meta polyfill - completely avoid read-only conflicts
     if (typeof globalThis !== 'undefined' && typeof globalThis.import === 'undefined') {
         try {
             globalThis.import = {
@@ -180,7 +251,7 @@
                     // Ensure jQuery is available before proceeding
                     if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
                         console.warn('ProElements: jQuery not available for element find operation');
-                        return jQuery ? jQuery([]) : [];
+                        return [];
                     }
 
                     const result = originalFind.call(this, selector);
@@ -223,27 +294,6 @@
         }
     }
 
-    // Fix for missing script elements (stats.wp.com and similar)
-    const originalCreateElement = document.createElement;
-    document.createElement = function(tagName) {
-        const element = originalCreateElement.call(this, tagName);
-        
-        if (tagName.toLowerCase() === 'script') {
-            const originalSetAttribute = element.setAttribute;
-            element.setAttribute = function(name, value) {
-                if (name === 'src' && value && typeof value === 'string') {
-                    // Add error handling for external scripts
-                    element.onerror = function() {
-                        console.warn('ProElements: Failed to load script:', value);
-                    };
-                }
-                return originalSetAttribute.call(this, name, value);
-            };
-        }
-        
-        return element;
-    };
-
     // Fix for layout forced before page load
     function preventLayoutForcing() {
         // Add CSS to prevent flash of unstyled content
@@ -276,13 +326,21 @@
     }
 
     // Enhanced Elementor hooks system with controlled retry
+    let hooksAdded = false;
+    
     function addElementorHooks() {
+        // If hooks already added, don't try again
+        if (hooksAdded) {
+            return true;
+        }
+        
         if (typeof elementorFrontend !== 'undefined' && 
             elementorFrontend.hooks && 
             typeof elementorFrontend.hooks.addAction === 'function') {
             try {
                 elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
                 console.log('ProElements: Successfully added Elementor hooks');
+                hooksAdded = true;
                 return true;
             } catch (error) {
                 console.warn('ProElements: Failed to add Elementor hooks:', error);
@@ -293,7 +351,15 @@
     }
 
     // Controlled retry mechanism for Elementor hooks
+    let hookRetryAttempted = false;
+    
     function retryElementorHooks() {
+        // Only try once to avoid infinite loops
+        if (hookRetryAttempted) {
+            return;
+        }
+        hookRetryAttempted = true;
+        
         let retryCount = 0;
         const maxRetries = 30; // 3 seconds max
         

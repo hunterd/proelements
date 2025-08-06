@@ -196,7 +196,11 @@ To test the fixes:
    - "ProElements: Successfully added Elementor hooks"
    - "ProElements: Editor compatibility fixes applied" (in editor mode)
 
-5. **Check in the Network tab that the compatibility files are loaded:**
+5. **Confirm the ABSENCE of these infinite retry messages:**
+   - "ProElements: jQuery not found after maximum retries" (should only appear once, not repeatedly)
+   - Multiple repeated "ProElements: jQuery not found in editor after maximum retries" messages
+
+6. **Check in the Network tab that the compatibility files are loaded:**
    - `compatibility-fixes.min.js` (frontend)
    - `editor-compatibility-fixes.min.js` (editor)
    - `compatibility-fixes.min.css` (styles)
@@ -258,7 +262,18 @@ If errors persist:
 
 You can use the included test file: `/wp-content/plugins/proelements/test-compatibility.html`
 
-### New Improvements (Version 3.30.0+)
+### New Improvements (Version 3.30.1+)
+
+- ✅ **Fixed infinite jQuery retry loops** - jQuery checking now has proper state management to prevent endless retries
+- ✅ **Enhanced `import.meta` polyfill** - Now intercepts script creation to automatically add `type="module"` and replace `import.meta` references
+- ✅ **Improved @elementor/editor-site-navigation fixes** - Comprehensive config object creation and error suppression for editor navigation
+- ✅ **Unified script interception** - Single `document.createElement` override handles both import.meta fixes and external script error handling
+- ✅ **Better error suppression** - Console error filtering for known Elementor navigation issues that are now handled
+- ✅ **Controlled retry mechanisms** - All retry loops now have proper state flags to prevent infinite execution
+- ✅ **Enhanced editor config initialization** - Automatic creation of missing `elementor.config.user`, `elementor.config.document`, and `elementor.settings.page` objects
+- ✅ **Comprehensive checklist error protection** - Added fallbacks for `Cannot read properties of null (reading 'parentElement')` errors
+
+### Previous Improvements (Version 3.30.0)
 
 - ✅ **Reinforced `import.meta` fix** with safer approach to avoid read-only property conflicts
 - ✅ **Chrome extension error handling** with listener protection

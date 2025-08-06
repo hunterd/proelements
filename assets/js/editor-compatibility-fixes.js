@@ -6,18 +6,37 @@
 (function() {
     'use strict';
 
-    // Ensure jQuery is available before proceeding
+    // Ensure jQuery is available before proceeding - with better handling
+    let jQueryChecked = false;
+    let jQueryAvailable = false;
+    
     function waitForJQuery(callback, maxRetries = 30) {
+        // If we already checked and found jQuery, use it immediately
+        if (jQueryChecked && jQueryAvailable) {
+            callback();
+            return;
+        }
+        
+        // If we already checked and didn't find jQuery, proceed anyway
+        if (jQueryChecked && !jQueryAvailable) {
+            callback();
+            return;
+        }
+        
         let retryCount = 0;
         
         function checkJQuery() {
             if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+                jQueryChecked = true;
+                jQueryAvailable = true;
                 callback();
                 return;
             } else if (retryCount < maxRetries) {
                 retryCount++;
                 setTimeout(checkJQuery, 100);
             } else {
+                jQueryChecked = true;
+                jQueryAvailable = false;
                 console.warn('ProElements: jQuery not found in editor after maximum retries, proceeding anyway');
                 callback();
                 return;
@@ -49,6 +68,44 @@
         if (elementor.config && !elementor.config.settings) {
             elementor.config.settings = {};
         }
+        
+        // Ensure all required editor config objects exist
+        if (!elementor.config.document) {
+            elementor.config.document = {};
+        }
+        
+        // Fix for editor site navigation errors
+        if (!elementor.config.user) {
+            elementor.config.user = {
+                restrictions: {},
+                capabilities: {}
+            };
+        }
+        
+        // Create settings page if missing (for editor-site-navigation)
+        if (!elementor.settings || !elementor.settings.page) {
+            if (typeof Backbone !== 'undefined') {
+                if (!elementor.settings) {
+                    elementor.settings = {};
+                }
+                elementor.settings.page = new Backbone.Model({
+                    title: document.title || 'Page',
+                    post_status: 'publish'
+                });
+            }
+        }
+        
+        // Suppress common editor navigation errors by providing fallbacks
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('@elementor/editor-site-navigation') && 
+                message.includes('Settings object not found')) {
+                console.warn('ProElements: Suppressed editor navigation error (settings object created)');
+                return;
+            }
+            originalConsoleError.apply(console, args);
+        };
         
         if (elementor.settings && !elementor.settings.page) {
             elementor.settings.page = new Backbone.Model({});
