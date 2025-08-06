@@ -3,13 +3,32 @@
  * Prevents flash of unstyled content and layout forcing
  */
 
-/* Prevent flash of unstyled content */
+/* Enhanced FOUC prevention */
+.elementor:not(.elementor-loaded) {
+    opacity: 0 !important;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.elementor.elementor-loaded {
+    opacity: 1 !important;
+}
+
 .elementor-element:not(.elementor-loaded) {
     visibility: hidden !important;
 }
 
 .elementor-element.elementor-loaded {
     visibility: visible !important;
+}
+
+/* Fix initial page load flashing */
+body.elementor-page:not(.elementor-kit-loaded) .elementor {
+    opacity: 0;
+}
+
+body.elementor-page.elementor-kit-loaded .elementor {
+    opacity: 1;
+    transition: opacity 0.2s ease-in-out;
 }
 
 /* Ensure Elementor widgets don't cause layout shifting */
@@ -22,9 +41,13 @@
     position: relative;
 }
 
-/* Prevent iframe issues */
-iframe[src*="stats.wp.com"] {
+/* Prevent problematic external scripts from displaying */
+iframe[src*="stats.wp.com"],
+iframe[src*="analytics"],
+iframe[src*="tracking"] {
     display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 /* Fix for editor preview issues */
@@ -32,19 +55,26 @@ iframe[src*="stats.wp.com"] {
     pointer-events: auto;
 }
 
-/* Ensure responsive breakpoints work correctly */
+/* Enhanced responsive handling */
 @media (max-width: 767px) {
     .elementor-element[data-element_type] {
         width: 100% !important;
     }
 }
 
-/* Fix for loop templates */
+/* Fix for loop templates and nested elements */
 .elementor-loop-container {
     position: relative;
+    min-height: 1px;
 }
 
 .elementor-loop-container .elementor-element {
+    position: relative;
+}
+
+/* Fix for missing document containers */
+div[class*="elementor-"]:empty {
+    min-height: 1px;
     position: relative;
 }
 
@@ -55,7 +85,25 @@ iframe[src*="stats.wp.com"] {
 
 /* Fix for popup z-index issues */
 .elementor-popup-modal {
-    z-index: 999999;
+    z-index: 999999 !important;
+}
+
+/* Fix for jQuery migrate warnings display */
+.jqmigrate-warning {
+    display: none !important;
+}
+
+/* Editor specific fixes */
+.elementor-editor-active .elementor-element {
+    min-height: 20px;
+}
+
+/* Fix for missing containers in preview */
+.elementor-editor-preview [data-elementor-type="wp-page"]:empty::before {
+    content: "";
+    display: block;
+    min-height: 50px;
+    background: rgba(0, 0, 0, 0.05);
 }
 
 /* Fix for sticky elements */

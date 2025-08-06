@@ -13,14 +13,30 @@
         };
     }
 
-    // Create a polyfill for import.meta
-    if (typeof importMeta === 'undefined') {
+    // Create a polyfill for import.meta - enhanced version
+    if (typeof window.importMeta === 'undefined') {
         window.importMeta = {
             url: window.location.href,
             resolve: function(specifier) {
                 return new URL(specifier, window.location.href).href;
+            },
+            env: {
+                MODE: window.location.hostname === 'localhost' ? 'development' : 'production',
+                DEV: window.location.hostname === 'localhost',
+                PROD: window.location.hostname !== 'localhost'
             }
         };
+    }
+    
+    // Global import.meta polyfill
+    if (typeof globalThis !== 'undefined' && typeof globalThis.import === 'undefined') {
+        Object.defineProperty(globalThis, 'import', {
+            value: {
+                meta: window.importMeta
+            },
+            writable: false,
+            configurable: false
+        });
     }
 
     // Fix DataCloneError: URL object could not be cloned
@@ -79,29 +95,48 @@
         };
     }
 
-    // Fix for missing elementor elements
+    // Fix for missing elementor elements - enhanced version
     function checkElementorElements() {
-        // Check if Elementor is available
-        if (typeof elementor === 'undefined' || typeof elementorFrontend === 'undefined') {
+        // Wait for elementorFrontend to be fully loaded
+        if (typeof elementorFrontend === 'undefined' || 
+            !elementorFrontend.elements || 
+            !elementorFrontend.elements.$body) {
+            setTimeout(checkElementorElements, 100);
             return;
         }
 
         // Fix for "Can't attach preview to document" errors
-        if (elementorFrontend && elementorFrontend.elements && elementorFrontend.elements.$body) {
-            const originalFind = elementorFrontend.elements.$body.find;
-            elementorFrontend.elements.$body.find = function(selector) {
-                try {
-                    const result = originalFind.call(this, selector);
-                    if (result.length === 0 && selector.includes('.elementor-')) {
-                        console.warn('ProElements: Element not found:', selector);
+        const originalFind = elementorFrontend.elements.$body.find;
+        elementorFrontend.elements.$body.find = function(selector) {
+            try {
+                const result = originalFind.call(this, selector);
+                if (result.length === 0 && selector.includes('.elementor-')) {
+                    console.warn('ProElements: Element not found, attempting to create:', selector);
+                    
+                    // Try to create missing elementor container
+                    const matches = selector.match(/\.elementor-(\d+)/);
+                    if (matches && matches[1]) {
+                        const documentId = matches[1];
+                        let container = document.querySelector(selector);
+                        
+                        if (!container) {
+                            container = document.createElement('div');
+                            container.className = `elementor elementor-${documentId}`;
+                            container.dataset.elementorType = 'wp-page';
+                            container.dataset.elementorId = documentId;
+                            document.body.appendChild(container);
+                            console.log(`ProElements: Created missing container for document ${documentId}`);
+                        }
+                        
+                        return $(container);
                     }
-                    return result;
-                } catch (error) {
-                    console.error('ProElements: Error in element find:', error);
-                    return $([]);  // Return empty jQuery object
                 }
-            };
-        }
+                return result;
+            } catch (error) {
+                console.error('ProElements: Error in element find:', error);
+                return $([]);  // Return empty jQuery object
+            }
+        };
     }
 
     // Fix for JQMIGRATE warnings
@@ -164,10 +199,20 @@
         initializeFixes();
     }
 
-    // Also run when Elementor is loaded
-    if (typeof elementorFrontend !== 'undefined') {
-        elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
+    // Also run when Elementor is loaded - with safety check
+    function addElementorHooks() {
+        if (typeof elementorFrontend !== 'undefined' && 
+            elementorFrontend.hooks && 
+            typeof elementorFrontend.hooks.addAction === 'function') {
+            elementorFrontend.hooks.addAction('frontend/element_ready/global', initializeFixes);
+        } else {
+            // Retry after a short delay if elementorFrontend is not ready
+            setTimeout(addElementorHooks, 100);
+        }
     }
+    
+    // Start trying to add hooks
+    addElementorHooks();
 
     // Additional fix for webpack modules
     if (typeof __webpack_require__ !== 'undefined' && typeof __webpack_require__.r === 'undefined') {

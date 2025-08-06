@@ -17,9 +17,21 @@
         }
     }
 
-    // Fix for editor document attachment issues
+    // Fix for editor document attachment issues - enhanced version
     function fixDocumentAttachment() {
-        if (typeof elementor === 'undefined') return;
+        if (typeof elementor === 'undefined') {
+            setTimeout(fixDocumentAttachment, 100);
+            return;
+        }
+
+        // Fix for @elementor/editor-site-navigation Settings object not found
+        if (elementor.config && !elementor.config.settings) {
+            elementor.config.settings = {};
+        }
+        
+        if (elementor.settings && !elementor.settings.page) {
+            elementor.settings.page = new Backbone.Model({});
+        }
 
         // Override preview attachment to handle missing elements
         if (elementor.modules && elementor.modules.layouts && elementor.modules.layouts.panel) {
@@ -27,10 +39,16 @@
             if (originalAttachPreview) {
                 elementor.modules.layouts.panel.attachPreview = function(documentId, elementSelector) {
                     try {
-                        const element = document.querySelector(elementSelector);
+                        let element = document.querySelector(elementSelector);
                         if (!element) {
-                            console.warn(`ProElements: Cannot attach preview to document '${documentId}', element '${elementSelector}' was not found.`);
-                            return false;
+                            console.warn(`ProElements: Cannot attach preview to document '${documentId}', element '${elementSelector}' was not found. Creating it...`);
+                            
+                            // Create the missing element
+                            element = document.createElement('div');
+                            element.className = `elementor elementor-${documentId}`;
+                            element.dataset.elementorType = 'wp-page';
+                            element.dataset.elementorId = documentId;
+                            document.body.appendChild(element);
                         }
                         return originalAttachPreview.call(this, documentId, elementSelector);
                     } catch (error) {
@@ -41,16 +59,27 @@
             }
         }
 
-        // Fix for missing elementor containers
-        if (elementor.config && elementor.config.initial_document) {
-            const documentId = elementor.config.initial_document.id;
-            const elementSelector = `.elementor-${documentId}`;
-            
-            if (!document.querySelector(elementSelector)) {
-                console.warn(`ProElements: Creating missing container for document ${documentId}`);
-                const container = document.createElement('div');
-                container.className = `elementor elementor-${documentId}`;
-                document.body.appendChild(container);
+        // Additional fix for web-cli preview attachment
+        if (typeof elementorPreview !== 'undefined' && elementorPreview.preview) {
+            const originalAttach = elementorPreview.preview.attach;
+            if (originalAttach) {
+                elementorPreview.preview.attach = function(documentId, elementSelector) {
+                    try {
+                        let element = document.querySelector(elementSelector);
+                        if (!element) {
+                            console.warn(`ProElements: Preview attach - element '${elementSelector}' not found for document '${documentId}'. Creating container...`);
+                            element = document.createElement('div');
+                            element.className = `elementor elementor-${documentId}`;
+                            element.dataset.elementorType = 'wp-page';
+                            element.dataset.elementorId = documentId;
+                            document.body.appendChild(element);
+                        }
+                        return originalAttach.call(this, documentId, elementSelector);
+                    } catch (error) {
+                        console.error('ProElements: Error in preview attach:', error);
+                        return Promise.reject(error);
+                    }
+                };
             }
         }
     }
@@ -87,29 +116,64 @@
         }
     }
 
-    // Fix for import.meta in editor modules
+    // Fix for import.meta in editor modules - enhanced version
     function fixImportMeta() {
-        // Create import.meta polyfill specifically for editor
+        // Create comprehensive import.meta polyfill
         if (typeof window.importMeta === 'undefined') {
             window.importMeta = {
                 url: window.location.href,
                 env: {
-                    MODE: 'development',
-                    DEV: true,
-                    PROD: false
+                    MODE: window.location.hostname === 'localhost' ? 'development' : 'production',
+                    DEV: window.location.hostname === 'localhost',
+                    PROD: window.location.hostname !== 'localhost',
+                    BASE_URL: window.location.origin + '/',
+                    SSR: false
+                },
+                resolve: function(specifier) {
+                    try {
+                        return new URL(specifier, window.location.href).href;
+                    } catch (e) {
+                        return specifier;
+                    }
                 }
             };
         }
 
-        // Override import calls
+        // Global import.meta assignment for modules
+        if (typeof globalThis !== 'undefined') {
+            try {
+                Object.defineProperty(globalThis, 'import', {
+                    value: {
+                        meta: window.importMeta
+                    },
+                    writable: false,
+                    configurable: true
+                });
+            } catch (e) {
+                // Fallback if property is already defined
+                if (globalThis.import && !globalThis.import.meta) {
+                    globalThis.import.meta = window.importMeta;
+                }
+            }
+        }
+
+        // Override import calls with better error handling
         const originalImport = window.import;
         window.import = function(specifier) {
             try {
-                if (originalImport) {
+                if (originalImport && typeof originalImport === 'function') {
                     return originalImport(specifier);
                 }
-                console.warn('ProElements: Dynamic import not supported:', specifier);
-                return Promise.reject(new Error('Dynamic import not supported'));
+                console.warn('ProElements: Dynamic import not supported, attempting fallback for:', specifier);
+                
+                // Attempt to load as regular script
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = specifier;
+                    script.onload = () => resolve({});
+                    script.onerror = () => reject(new Error(`Failed to load module: ${specifier}`));
+                    document.head.appendChild(script);
+                });
             } catch (error) {
                 console.warn('ProElements: Import error:', error);
                 return Promise.reject(error);
