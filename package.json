@@ -1,0 +1,26 @@
+{
+  "name": "proelements",
+  "version": "3.30.0",
+  "description": "ProElements WordPress Plugin Build Tools",
+  "scripts": {
+    "build": "node build-editor.js",
+    "build:quick": "node quick-build.js",
+    "build:no-backup": "node build-editor.js --no-backup",
+    "build:fix-only": "node build-editor.js --no-minify",
+    "build:minify-only": "node build-editor.js --no-fix",
+    "restore": "node build-editor.js --restore",
+    "clean": "rm -f assets/js/editor.min.js assets/js/editor.js.backup",
+    "diff": "node diff-editor.js diff",
+    "stats": "node diff-editor.js stats",
+    "help": "node build-editor.js --help"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "babel-loader": "^9.1.3",
+    "terser-webpack-plugin": "^5.3.9",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "private": true
+}
