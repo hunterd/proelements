@@ -1,0 +1,79 @@
+/**
+ * ProElements CSS Compatibility Fixes
+ * Prevents flash of unstyled content and layout forcing
+ */
+
+/* Prevent flash of unstyled content */
+.elementor-element:not(.elementor-loaded) {
+    visibility: hidden !important;
+}
+
+.elementor-element.elementor-loaded {
+    visibility: visible !important;
+}
+
+/* Ensure Elementor widgets don't cause layout shifting */
+.elementor-widget-container {
+    min-height: 1px;
+}
+
+/* Fix for missing elementor containers */
+.elementor-element[data-element_type] {
+    position: relative;
+}
+
+/* Prevent iframe issues */
+iframe[src*="stats.wp.com"] {
+    display: none !important;
+}
+
+/* Fix for editor preview issues */
+.elementor-editor-preview iframe {
+    pointer-events: auto;
+}
+
+/* Ensure responsive breakpoints work correctly */
+@media (max-width: 767px) {
+    .elementor-element[data-element_type] {
+        width: 100% !important;
+    }
+}
+
+/* Fix for loop templates */
+.elementor-loop-container {
+    position: relative;
+}
+
+.elementor-loop-container .elementor-element {
+    position: relative;
+}
+
+/* Fix for nested carousel issues */
+.elementor-widget-nested-carousel .swiper-container {
+    overflow: hidden;
+}
+
+/* Fix for popup z-index issues */
+.elementor-popup-modal {
+    z-index: 999999;
+}
+
+/* Fix for sticky elements */
+.elementor-sticky {
+    transition: all 0.3s ease;
+}
+
+/* Fix for animations that might cause layout issues */
+.elementor-invisible {
+    visibility: hidden;
+}
+
+/* Ensure proper loading states */
+.elementor-loading {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.elementor-loading.elementor-loaded {
+    opacity: 1;
+}

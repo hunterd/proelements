@@ -228,6 +228,16 @@ class Plugin {
 	public function enqueue_frontend_scripts() {
 		$suffix = $this->get_assets_suffix();
 
+		// Enqueue compatibility fixes first (CSS and JS)
+		wp_enqueue_style(
+			'pro-elements-compatibility-fixes',
+			ELEMENTOR_PRO_URL . 'assets/css/compatibility-fixes' . $suffix . '.css',
+			[],
+			ELEMENTOR_PRO_VERSION
+		);
+		
+		wp_enqueue_script( 'pro-elements-compatibility-fixes' );
+
 		wp_enqueue_script(
 			'elementor-pro-frontend',
 			ELEMENTOR_PRO_URL . 'assets/js/frontend' . $suffix . '.js',
@@ -291,10 +301,34 @@ class Plugin {
 	public function register_frontend_scripts() {
 		$suffix = $this->get_assets_suffix();
 
+		// Register compatibility fixes first (highest priority)
+		wp_register_style(
+			'pro-elements-compatibility-fixes',
+			ELEMENTOR_PRO_URL . 'assets/css/compatibility-fixes' . $suffix . '.css',
+			[],
+			ELEMENTOR_PRO_VERSION
+		);
+		
+		wp_register_script(
+			'pro-elements-compatibility-fixes',
+			ELEMENTOR_PRO_URL . 'assets/js/compatibility-fixes' . $suffix . '.js',
+			[],
+			ELEMENTOR_PRO_VERSION,
+			false // Load in head to prevent import.meta errors
+		);
+
+		wp_register_script(
+			'pro-elements-editor-compatibility-fixes',
+			ELEMENTOR_PRO_URL . 'assets/js/editor-compatibility-fixes' . $suffix . '.js',
+			[],
+			ELEMENTOR_PRO_VERSION,
+			false
+		);
+
 		wp_register_script(
 			'elementor-pro-webpack-runtime',
 			ELEMENTOR_PRO_URL . 'assets/js/webpack-pro.runtime' . $suffix . '.js',
-			[],
+			[ 'pro-elements-compatibility-fixes' ],
 			ELEMENTOR_PRO_VERSION,
 			true
 		);
@@ -304,10 +338,14 @@ class Plugin {
 			ELEMENTOR_PRO_URL . 'assets/js/elements-handlers' . $suffix . '.js',
 			[
 				'elementor-frontend',
+				'pro-elements-compatibility-fixes',
 			],
 			ELEMENTOR_PRO_VERSION,
 			true
 		);
+		
+		// Add module type for ES6 scripts that use import.meta
+		add_filter( 'script_loader_tag', [ $this, 'add_module_type_to_scripts' ], 10, 3 );
 
 		wp_register_script(
 			'smartmenus',
@@ -339,12 +377,22 @@ class Plugin {
 	public function register_preview_scripts() {
 		$suffix = $this->get_assets_suffix();
 
+		// Enqueue editor compatibility fixes first
+		wp_enqueue_script(
+			'pro-elements-editor-compatibility-fixes',
+			ELEMENTOR_PRO_URL . 'assets/js/editor-compatibility-fixes' . $suffix . '.js',
+			[],
+			ELEMENTOR_PRO_VERSION,
+			false
+		);
+
 		wp_enqueue_script(
 			'elementor-pro-preview',
 			ELEMENTOR_PRO_URL . 'assets/js/preview' . $suffix . '.js',
 			[
 				'wp-i18n',
 				'elementor-frontend',
+				'pro-elements-editor-compatibility-fixes',
 			],
 			ELEMENTOR_PRO_VERSION,
 			true
@@ -418,6 +466,43 @@ class Plugin {
 		}
 
 		return $settings;
+	}
+
+	/**
+	 * Add module type to specific scripts that use import.meta
+	 *
+	 * @param string $tag    The script tag.
+	 * @param string $handle The script handle.
+	 * @param string $src    The script source URL.
+	 * @return string
+	 */
+	public function add_module_type_to_scripts( $tag, $handle, $src ) {
+		// Scripts that need module type (contains .mjs extension or uses import.meta)
+		$module_scripts = [
+			'elementor-pro-editor',
+			'elementor-pro-frontend',
+			'pro-elements-handlers'
+		];
+		
+		// Check if this script needs module type
+		$needs_module_type = false;
+		
+		// Check if handle is in our list
+		if ( in_array( $handle, $module_scripts, true ) ) {
+			$needs_module_type = true;
+		}
+		
+		// Check if URL contains hash patterns that indicate ES6 modules
+		if ( preg_match('/\.(DnthFti3|CccIAOf|[a-f0-9]{8,12})\.js/', $src ) ) {
+			$needs_module_type = true;
+		}
+		
+		// Add type="module" if needed
+		if ( $needs_module_type ) {
+			$tag = str_replace( ' src=', ' type="module" src=', $tag );
+		}
+		
+		return $tag;
 	}
 
 	private function setup_hooks() {

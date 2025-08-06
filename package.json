@@ -12,6 +12,7 @@
     "clean": "rm -f assets/js/editor.min.js assets/js/editor.js.backup",
     "diff": "node diff-editor.js diff",
     "stats": "node diff-editor.js stats",
+    "test:compatibility": "node test-compatibility.js",
     "help": "node build-editor.js --help"
   },
   "devDependencies": {
