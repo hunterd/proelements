@@ -80,6 +80,16 @@ This document explains the fixes applied to resolve JavaScript errors in ProElem
 - Multiple event listeners for different Elementor initialization events
 - Graceful fallback when hooks are unavailable
 
+### 9. `$ is not a function` (jQuery not loaded)
+
+**Issue:** jQuery not available when Elementor code attempts to use it.
+
+**Solution:**
+- Added comprehensive jQuery availability checks before using `$`
+- Intelligent waiting mechanism with retry for jQuery loading
+- Enhanced error handling with fallback for missing jQuery
+- Protection of all jQuery-dependent operations with wait functions
+
 ## Added Files
 
 ### JavaScript Scripts
@@ -178,6 +188,7 @@ To test the fixes:
    - ✅ `elementorFrontend.hooks is undefined`
    - ✅ `@elementor/editor-site-navigation - Settings object not found`
    - ✅ `Promised response from onMessage listener went out of scope`
+   - ✅ `$ is not a function` (jQuery not loaded errors)
 
 4. **Confirm the presence of the following success messages:**
    - "ProElements: Compatibility fixes applied"
@@ -203,6 +214,13 @@ window.postMessage({url: new URL(location.href)}, '*');
 // Test 3: elementorFrontend hooks (if available)
 if (typeof elementorFrontend !== 'undefined') {
     console.log('elementorFrontend.hooks:', elementorFrontend.hooks);
+}
+
+// Test 4: jQuery availability check
+if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+    console.log('jQuery ($) is available:', $().jquery);
+} else {
+    console.warn('jQuery is not available');
 }
 ```
 
@@ -249,3 +267,5 @@ You can use the included test file: `/wp-content/plugins/proelements/test-compat
 - ✅ **Extended protection against problematic external scripts**
 - ✅ **Script interception** for automatic module conversion
 - ✅ **Improved ES6 script detection** requiring module type
+- ✅ **Enhanced jQuery availability protection** with intelligent waiting
+- ✅ **Comprehensive error handling** for missing dependencies

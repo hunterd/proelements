@@ -6,6 +6,25 @@
 (function() {
     'use strict';
 
+    // Ensure jQuery is available before proceeding
+    function waitForJQuery(callback, maxRetries = 100) {
+        let retryCount = 0;
+        
+        function checkJQuery() {
+            if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+                callback();
+            } else if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(checkJQuery, 50);
+            } else {
+                console.warn('ProElements: jQuery not found in editor after maximum retries, proceeding anyway');
+                callback();
+            }
+        }
+        
+        checkJQuery();
+    }
+
     // Wait for Elementor to be ready
     function waitForElementor(callback) {
         if (typeof elementor !== 'undefined' && elementor.isReady) {
@@ -218,16 +237,34 @@
         });
     }
 
-    // Run fixes when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeEditorFixes);
-    } else {
-        initializeEditorFixes();
+    // Run fixes when DOM is ready - wait for jQuery first
+    function startInitialization() {
+        waitForJQuery(function() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeEditorFixes);
+            } else {
+                initializeEditorFixes();
+            }
+        });
     }
 
+    // Start initialization
+    startInitialization();
+
     // Also run when entering editor mode
-    if (typeof elementorCommon !== 'undefined') {
-        elementorCommon.elements.$window.on('elementor:init', initializeEditorFixes);
+    if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
+        elementorCommon.elements.$window.on('elementor:init', function() {
+            waitForJQuery(initializeEditorFixes);
+        });
+    } else {
+        // Fallback - try to listen for elementorCommon later
+        setTimeout(function() {
+            if (typeof elementorCommon !== 'undefined' && elementorCommon.elements && elementorCommon.elements.$window) {
+                elementorCommon.elements.$window.on('elementor:init', function() {
+                    waitForJQuery(initializeEditorFixes);
+                });
+            }
+        }, 1000);
     }
 
 })();

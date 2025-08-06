@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test jQuery Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .console-log { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 10px 0; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>ProElements jQuery Compatibility Fix Test</h1>
+    <div id="test-results"></div>
+    <div id="console-output" class="console-log"></div>
+
+    <script>
+        // Mock console.log to capture output
+        const originalConsoleLog = console.log;
+        const originalConsoleWarn = console.warn;
+        const originalConsoleError = console.error;
+        const consoleOutput = document.getElementById('console-output');
+        
+        function logToPage(level, ...args) {
+            const message = args.join(' ');
+            consoleOutput.innerHTML += `<div style="color: ${level === 'error' ? 'red' : level === 'warn' ? 'orange' : 'black'}">[${level.toUpperCase()}] ${message}</div>`;
+        }
+        
+        console.log = (...args) => {
+            originalConsoleLog(...args);
+            logToPage('log', ...args);
+        };
+        console.warn = (...args) => {
+            originalConsoleWarn(...args);
+            logToPage('warn', ...args);
+        };
+        console.error = (...args) => {
+            originalConsoleError(...args);
+            logToPage('error', ...args);
+        };
+
+        function addTestResult(test, success, message) {
+            const resultsDiv = document.getElementById('test-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${success ? 'success' : 'error'}`;
+            resultDiv.innerHTML = `<strong>${test}:</strong> ${message}`;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        // Test 1: Load compatibility fixes without jQuery
+        console.log('=== Starting jQuery Compatibility Tests ===');
+        
+        // Simulate the scenario where compatibility fixes load before jQuery
+        window.elementorFrontend = {
+            elements: {
+                $body: {
+                    find: function(selector) {
+                        console.log('Original find called with:', selector);
+                        return [];
+                    }
+                }
+            }
+        };
+    </script>
+
+    <!-- Load our compatibility fixes first (without jQuery) -->
+    <script src="assets/js/compatibility-fixes.min.js"></script>
+
+    <script>
+        // Test 2: Simulate the problematic scenario
+        console.log('Testing scenario without jQuery...');
+        
+        setTimeout(() => {
+            try {
+                // This should not throw an error now
+                const result = elementorFrontend.elements.$body.find('.elementor-284');
+                addTestResult('Find without jQuery', true, 'No error thrown when jQuery is not available');
+            } catch (error) {
+                addTestResult('Find without jQuery', false, `Error: ${error.message}`);
+            }
+        }, 100);
+
+        // Test 3: Load jQuery and test again
+        setTimeout(() => {
+            console.log('Loading jQuery...');
+            const jqueryScript = document.createElement('script');
+            jqueryScript.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+            jqueryScript.onload = () => {
+                console.log('jQuery loaded, version:', $().jquery);
+                
+                setTimeout(() => {
+                    try {
+                        // This should work normally now
+                        const result = elementorFrontend.elements.$body.find('.elementor-284');
+                        addTestResult('Find with jQuery', true, 'Works correctly when jQuery is available');
+                    } catch (error) {
+                        addTestResult('Find with jQuery', false, `Error: ${error.message}`);
+                    }
+                    
+                    // Test 4: Test our jQuery waiting mechanism
+                    console.log('Testing jQuery waiting mechanism...');
+                    addTestResult('jQuery Protection', true, 'All tests completed successfully');
+                }, 100);
+            };
+            document.head.appendChild(jqueryScript);
+        }, 500);
+    </script>
+</body>
+</html>

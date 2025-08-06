@@ -6,6 +6,25 @@
 (function() {
     'use strict';
 
+    // Ensure jQuery is available before proceeding
+    function waitForJQuery(callback, maxRetries = 100) {
+        let retryCount = 0;
+        
+        function checkJQuery() {
+            if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+                callback();
+            } else if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(checkJQuery, 50);
+            } else {
+                console.warn('ProElements: jQuery not found after maximum retries, proceeding anyway');
+                callback();
+            }
+        }
+        
+        checkJQuery();
+    }
+
     // Fix for import.meta errors in non-module scripts
     if (typeof window.import === 'undefined') {
         window.import = function() {
@@ -175,10 +194,12 @@
 
     // Fix for missing elementor elements - enhanced version
     function checkElementorElements() {
-        // Wait for elementorFrontend to be fully loaded
+        // Wait for elementorFrontend to be fully loaded AND jQuery
         if (typeof elementorFrontend === 'undefined' || 
             !elementorFrontend.elements || 
-            !elementorFrontend.elements.$body) {
+            !elementorFrontend.elements.$body ||
+            typeof $ === 'undefined' ||
+            typeof jQuery === 'undefined') {
             setTimeout(checkElementorElements, 100);
             return;
         }
@@ -187,6 +208,12 @@
         const originalFind = elementorFrontend.elements.$body.find;
         elementorFrontend.elements.$body.find = function(selector) {
             try {
+                // Ensure jQuery is available before proceeding
+                if (typeof $ === 'undefined') {
+                    console.error('ProElements: Error in element find: jQuery ($) is not available');
+                    return jQuery ? jQuery([]) : [];
+                }
+
                 const result = originalFind.call(this, selector);
                 if (result.length === 0 && selector.includes('.elementor-')) {
                     console.warn('ProElements: Element not found, attempting to create:', selector);
@@ -212,7 +239,14 @@
                 return result;
             } catch (error) {
                 console.error('ProElements: Error in element find:', error);
-                return $([]);  // Return empty jQuery object
+                // Return safe empty result based on what's available
+                if (typeof $ !== 'undefined') {
+                    return $([]);
+                } else if (typeof jQuery !== 'undefined') {
+                    return jQuery([]);
+                } else {
+                    return [];
+                }
             }
         };
     }
@@ -318,13 +352,21 @@
         }
     }
     
-    // Start trying to add hooks
-    addElementorHooks();
+    // Start trying to add hooks - wait for jQuery first
+    waitForJQuery(function() {
+        addElementorHooks();
+    });
     
     // Also listen for elementor events
     if (typeof jQuery !== 'undefined') {
         jQuery(document).on('elementor/frontend/init', function() {
             console.log('ProElements: Elementor frontend initialized');
+            addElementorHooks();
+        });
+    } else {
+        // Fallback: listen for DOMContentLoaded if jQuery is not available
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('ProElements: DOM loaded, attempting to add hooks');
             addElementorHooks();
         });
     }
