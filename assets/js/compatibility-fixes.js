@@ -65,6 +65,34 @@
         }
         return originalEval.call(this, code);
     };
+    
+    // Approach 4: Intercept script loading to fix import.meta errors
+    const originalAppendChild = Node.prototype.appendChild;
+    Node.prototype.appendChild = function(child) {
+        if (child.tagName === 'SCRIPT' && child.src) {
+            // Add module type to scripts that use import.meta
+            const originalOnLoad = child.onload;
+            child.onload = function() {
+                // Script loaded successfully
+                if (originalOnLoad) originalOnLoad.call(this);
+            };
+            
+            const originalOnError = child.onerror;
+            child.onerror = function(error) {
+                // Check if error is related to import.meta
+                if (error && error.message && error.message.includes('import.meta')) {
+                    console.warn('ProElements: import.meta error caught for script:', child.src);
+                    // Try to reload as module
+                    if (!child.type || child.type !== 'module') {
+                        child.type = 'module';
+                        console.log('ProElements: Converted script to module type:', child.src);
+                    }
+                }
+                if (originalOnError) originalOnError.call(this, error);
+            };
+        }
+        return originalAppendChild.call(this, child);
+    };
 
     // Fix DataCloneError: URL object could not be cloned
     const originalPostMessage = window.postMessage;

@@ -492,13 +492,18 @@ class Plugin {
 			$needs_module_type = true;
 		}
 		
-		// Check if URL contains hash patterns that indicate ES6 modules
+		// Check if URL contains hash patterns that indicate ES6 modules or import.meta usage
 		if ( preg_match('/\.(DnthFti3|CccIAOf|[a-f0-9]{8,12})\.js/', $src ) ) {
 			$needs_module_type = true;
 		}
 		
-		// Add type="module" if needed
-		if ( $needs_module_type ) {
+		// Check for specific patterns in the filename that suggest ES6 modules
+		if ( strpos( $src, 'editor.' ) !== false && strpos( $src, '.js' ) !== false ) {
+			$needs_module_type = true;
+		}
+		
+		// Add type="module" if needed and not already present
+		if ( $needs_module_type && strpos( $tag, 'type="module"' ) === false ) {
 			$tag = str_replace( ' src=', ' type="module" src=', $tag );
 		}
 		

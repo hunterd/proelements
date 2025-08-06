@@ -167,36 +167,85 @@ console.log('ProElements: ...')
 
 ## Tests
 
-Pour tester les corrections :
+To test the fixes:
 
-1. **Rechargez une page avec Elementor**
-2. **Ouvrez la console développeur (F12)**
-3. **Vérifiez l'absence des erreurs suivantes :**
-   - `import.meta may only appear in a module`
-   - `DataCloneError: URL object could not be cloned`
-   - `Can't attach preview to document`
-   - `elementorFrontend.hooks is undefined`
-   - `Settings object not found`
-   - `Promised response from onMessage listener went out of scope`
+1. **Reload a page with Elementor**
+2. **Open the developer console (F12)**
+3. **Check for the absence of the following errors:**
+   - ✅ `Uncaught SyntaxError: Cannot use 'import.meta' outside a module`
+   - ✅ `DataCloneError: URL object could not be cloned`
+   - ✅ `Can't attach preview to document`
+   - ✅ `elementorFrontend.hooks is undefined`
+   - ✅ `@elementor/editor-site-navigation - Settings object not found`
+   - ✅ `Promised response from onMessage listener went out of scope`
 
-4. **Confirmez la présence du message :** "ProElements: Compatibility fixes applied"
-5. **Vérifiez dans l'onglet Network que les fichiers de compatibilité sont chargés**
+4. **Confirm the presence of the following success messages:**
+   - "ProElements: Compatibility fixes applied"
+   - "ProElements: Successfully added Elementor hooks"
+   - "ProElements: Editor compatibility fixes applied" (in editor mode)
 
-### Messages de débogage attendus
+5. **Check in the Network tab that the compatibility files are loaded:**
+   - `compatibility-fixes.min.js` (frontend)
+   - `editor-compatibility-fixes.min.js` (editor)
+   - `compatibility-fixes.min.css` (styles)
+
+### Manual Fixes Testing
+
+```javascript
+// In the developer console, test:
+
+// Test 1: import.meta polyfill
+console.log('import.meta polyfill:', window.importMeta);
+
+// Test 2: postMessage with URL (should not fail)
+window.postMessage({url: new URL(location.href)}, '*');
+
+// Test 3: elementorFrontend hooks (if available)
+if (typeof elementorFrontend !== 'undefined') {
+    console.log('elementorFrontend.hooks:', elementorFrontend.hooks);
+}
+```
+
+### Expected Debug Messages
+
+If everything works correctly, you should see:
 
 ```javascript
 ProElements: Compatibility fixes applied
 ProElements: Successfully added Elementor hooks
-ProElements: Editor compatibility fixes applied (en mode éditeur)
+ProElements: Editor compatibility fixes applied (in editor mode)
 ```
 
-Si des problèmes persistent, vérifiez que les fichiers de compatibilité sont chargés dans l'onglet Network des outils de développement.
+If issues are detected and fixed:
 
-### Nouvelles améliorations (Version 3.30.0+)
+```javascript
+ProElements: Element not found, attempting to create: .elementor-346
+ProElements: Created missing container for document 346
+ProElements: Fixed DataCloneError in postMessage: [error details]
+ProElements: Failed to load script: https://stats.wp.com/s-202532.js
+```
 
-- ✅ Correction renforcée de `import.meta` avec multiples approches de fallback
-- ✅ Gestion des erreurs Chrome extension avec protection des listeners
-- ✅ Création automatique des objets de configuration Elementor manquants
-- ✅ Système de retry intelligent pour les hooks elementorFrontend
-- ✅ Prévention améliorée du FOUC avec transitions opacity
-- ✅ Protection étendue contre les scripts externes problématiques
+### Troubleshooting
+
+If errors persist:
+
+1. **Check that the compatibility files are loaded** in the Network tab
+2. **Check the plugin version** (should be 3.30.0+)
+3. **Clear your site and browser cache**
+4. **Check the console** for ProElements messages
+5. **Temporarily disable other plugins** to identify conflicts
+
+### Online Test
+
+You can use the included test file: `/wp-content/plugins/proelements/test-compatibility.html`
+
+### New Improvements (Version 3.30.0+)
+
+- ✅ **Reinforced `import.meta` fix** with multiple fallback approaches
+- ✅ **Chrome extension error handling** with listener protection
+- ✅ **Automatic creation of missing Elementor config objects**
+- ✅ **Intelligent retry system** for elementorFrontend hooks
+- ✅ **Improved FOUC prevention** with opacity transitions
+- ✅ **Extended protection against problematic external scripts**
+- ✅ **Script interception** for automatic module conversion
+- ✅ **Improved ES6 script detection** requiring module type
